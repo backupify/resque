@@ -191,6 +191,13 @@ context "Resque" do
     assert_equal nil, Resque.pop(:people)
   end
 
+  test "can set and get and erase dynamic queues" do
+    Resque.set_dynamic_queue("mykey", ["foo", "bar"])
+    assert_equal ["foo", "bar"], Resque.get_dynamic_queue("mykey")
+    Resque.set_dynamic_queue("mykey", [])
+    assert_equal [], Resque.get_dynamic_queue("mykey")
+  end
+
   test "keeps track of resque keys" do
     assert_equal ["queue:people", "queues"], Resque.keys
   end

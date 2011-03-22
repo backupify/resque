@@ -195,36 +195,50 @@ module Resque
     end
 
     # Returns a list of queues to use when searching for a job.
+    #
     # A splat ("*") means you want every queue (in alpha order) - this
     # can be useful for dynamically adding new queues.
     #
     # The splat can also be used as a wildcard within a queue name,
     # e.g. "*high*", and negation can be indicated with a prefix of "!"
+    #
+    # An @key can be used to dynamically look up the queue list for key from redis.
+    # If no key is supplied, it defaults to the worker's hostname, and wildcards
+    # and negations can be used inside this dynamic queue list.   Set the queue
+    # list for a key with Resque.set_dynamic_queue(key, ["q1", "q2"]
+    #
     def queues
-      if @queues.grep(/(^!)|(\*)/).size == 0
-        return @queues
+      return @queues if @queues.grep(/(^!)|(\*)|(@)/).size == 0
+
+      if @queues[0] =~ /^@(.*)/
+        key = $1.strip
+        key = hostname if key.size == 0
+        queue_names = Resque.get_dynamic_queue(key)
+        return queue_names if queue_names.grep(/(^!)|(\*)/).size == 0
       else
-        real_queues = Resque.queues
-        matched_queues = []
+        queue_names = @queues
+      end
 
-        @queues.each do |q|
-          q = q.to_s
-          if q[0] == '!'
-            negated = true
-            q = q[1..-1]
-          end
+      real_queues = Resque.queues
+      matched_queues = []
 
-          patstr = q.gsub(/\*/, ".*")
-          pattern = /^#{patstr}$/
-          if negated
-            matched_queues -= matched_queues.grep(pattern)
-          else
-            matched_queues.concat(real_queues.grep(/^#{pattern}$/))
-          end
+      queue_names.each do |q|
+        q = q.to_s
+        if q[0] == '!'
+          negated = true
+          q = q[1..-1]
         end
 
-        return matched_queues.uniq.sort
+        patstr = q.gsub(/\*/, ".*")
+        pattern = /^#{patstr}$/
+        if negated
+          matched_queues -= matched_queues.grep(pattern)
+        else
+          matched_queues.concat(real_queues.grep(/^#{pattern}$/))
+        end
       end
+
+      return matched_queues.uniq.sort
     end
 
     # Not every platform supports fork. Here we do our magic to

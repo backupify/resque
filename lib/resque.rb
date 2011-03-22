@@ -189,6 +189,18 @@ module Resque
     redis.del("queue:#{queue}")
   end
 
+  def get_dynamic_queue(key)
+    redis.lrange("dynamic_queue:#{key}", 0, -1)
+  end
+
+  def set_dynamic_queue(key, values)
+    k = "dynamic_queue:#{key}"
+    redis.del(k)
+    Array(values).each do |v|
+       redis.rpush(k, v)
+    end
+  end
+
   # Used internally to keep track of which queues we've created.
   # Don't call this directly.
   def watch_queue(queue)

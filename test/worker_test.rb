@@ -155,6 +155,28 @@ context "Resque::Worker" do
     assert_equal 1, Resque.size(:superhigh_z)
   end
 
+  test "can dynamically lookup queues" do
+    Resque.set_dynamic_queue("mykey", ["foo", "bar"])
+    worker = Resque::Worker.new("@mykey")
+    assert_equal ["foo", "bar"], worker.queues
+  end
+
+  test "uses hostname as default key in dynamic queues" do
+    host = `hostname`.chomp
+    Resque.set_dynamic_queue(host, ["foo", "bar"])
+    worker = Resque::Worker.new("@")
+    assert_equal ["foo", "bar"], worker.queues
+  end
+
+  test "can use wildcards in dynamic queues" do
+    Resque.watch_queue("foo")
+    Resque.watch_queue("bar")
+    Resque.watch_queue("baz")
+    Resque.set_dynamic_queue("mykey", ["*", "!baz"])
+    worker = Resque::Worker.new("@mykey")
+    assert_equal ["bar", "foo", "jobs"], worker.queues
+  end
+
   test "has a unique id" do
     assert_equal "#{`hostname`.chomp}:#{$$}:jobs", @worker.to_s
   end
