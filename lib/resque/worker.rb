@@ -117,7 +117,7 @@ module Resque
       loop do
         break if shutdown?
 
-        procline "Blocking reserve for #{queues.join(', ')}" if blocking
+        procline "Blocking reserve for #{queues.length} queue(s)" if blocking
         if not @paused and job = blocking ? blocking_reserve(interval) : reserve
           log "got: #{job.inspect}"
           run_hook :before_fork, job
