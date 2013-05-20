@@ -112,7 +112,15 @@ module Resque
       $0 = "resque: Starting"
       startup
 
-      blocking = interval > 0 && should_block?
+      # ensure that interval is an integer value (this DRYs up some code below)
+      # this will also handle: "", nil, false, etc.
+      interval = interval.to_i
+
+      # Blocking w/ an interval of zero is bad, it means block forever (ensure
+      # that it is greater than zero). Also, make sure that there is at least
+      # one queue configured for this worker. Lastly, disable this for clients
+      # that support the "nodes" method (e.g. - clients that support clustering)
+      blocking = interval > 0 && queues.size >= 1 && !redis.respond_to?(:nodes)
 
       loop do
         break if shutdown?
@@ -136,11 +144,11 @@ module Resque
           done_working
           @child = nil
         else
-          break if interval.to_i == 0
+          break if interval == 0
           if ! blocking
-            log! "Sleeping for #{interval.to_i}"
-            procline @paused ? "Paused" : "Waiting for #{@queues.join(',')}"
-            sleep interval.to_i
+            log! "Sleeping for #{interval}"
+            procline @paused ? "Paused" : "Waiting for #{queues.join(', ')}"
+            sleep interval
           end
         end
       end
@@ -178,10 +186,6 @@ module Resque
       ensure
         yield job if block_given?
       end
-    end
-
-    def should_block?
-      queues.size >= 1 && ! redis.respond_to?(:nodes)
     end
 
     # Attempts to grab a job off one of the provided queues. Returns

@@ -137,7 +137,8 @@ module Resque
     decode redis.lpop("queue:#{queue}")
   end
 
-  # Blocking pops a job off a list of queues, "queues" should be a list
+  # Blocking pops a job off a list of queues. Queues should be a list
+  # of strings.
   #
   # Returns a Ruby object
   def blpop(queues, timeout = 1)

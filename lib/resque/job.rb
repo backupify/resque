@@ -108,6 +108,7 @@ module Resque
     # if any jobs are available. If not, returns nil.
     def self.blocking_reserve(queues, timeout)
       return unless value = Resque.blpop(queues, timeout)
+      # Format: ["<namespace>:queue:job", encoded_payload]
       new(value[0].split(':').last, decode(value[1]))
     end
 
