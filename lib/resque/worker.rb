@@ -112,10 +112,13 @@ module Resque
       $0 = "resque: Starting"
       startup
 
+      blocking = interval > 0 && should_block?
+
       loop do
         break if shutdown?
 
-        if not @paused and job = reserve
+        procline "Blocking reserve for #{queues.join(', ')}" if blocking
+        if not @paused and job = blocking ? blocking_reserve(interval) : reserve
           log "got: #{job.inspect}"
           run_hook :before_fork, job
           working_on job
@@ -123,7 +126,7 @@ module Resque
           if @child = fork
             rand # Reseeding
             procline "Forked #{@child} at #{Time.now.to_i}"
-            Process.wait
+            Process.wait(@child)
           else
             procline "Processing #{job.queue} since #{Time.now.to_i}"
             perform(job, &block)
@@ -134,9 +137,11 @@ module Resque
           @child = nil
         else
           break if interval.to_i == 0
-          log! "Sleeping for #{interval.to_i}"
-          procline @paused ? "Paused" : "Waiting for #{@queues.join(',')}"
-          sleep interval.to_i
+          if ! blocking
+            log! "Sleeping for #{interval.to_i}"
+            procline @paused ? "Paused" : "Waiting for #{@queues.join(',')}"
+            sleep interval.to_i
+          end
         end
       end
 
@@ -175,6 +180,10 @@ module Resque
       end
     end
 
+    def should_block?
+      queues.size >= 1 && ! redis.respond_to?(:nodes)
+    end
+
     # Attempts to grab a job off one of the provided queues. Returns
     # nil if no job can be found.
     def reserve
@@ -189,6 +198,22 @@ module Resque
       nil
     rescue Exception => e
       log "Error reserving job: #{e.inspect}"
+      log e.backtrace.join("\n")
+      raise e
+    end
+
+    # Attempts to grab a job off one of the provided queues. Returns
+    # nil if no job can be found.
+    def blocking_reserve(timeout)
+      log! "Checking #{queues.join(', ')} (blocking, timeout = #{timeout})"
+      if job = Resque::Job.blocking_reserve(queues, timeout)
+        log! "Found job on #{job.queue}"
+        return job
+      end
+
+      nil
+    rescue Exception => e
+      log "Error during blocking reserve of job: #{e.inspect}"
       log e.backtrace.join("\n")
       raise e
     end

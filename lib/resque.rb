@@ -137,6 +137,14 @@ module Resque
     decode redis.lpop("queue:#{queue}")
   end
 
+  # Blocking pops a job off a list of queues, "queues" should be a list
+  #
+  # Returns a Ruby object
+  def blpop(queues, timeout = 1)
+    queue_keys = queues.map {|queue| "queue:#{queue}"}
+    redis.blpop(*(queue_keys << timeout))
+  end
+
   # Returns an integer representing the size of a queue.
   # Queue name should be a string.
   def size(queue)
