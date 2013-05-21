@@ -354,4 +354,15 @@ context "Resque::Worker" do
     assert_equal 0, Resque.size(:high)
   end
 
+  # Blocking indefinitely is not currently supported in our version of Resque.
+  # This test was added as a sanity check to ensure that this is not changed
+  # accidentally or intentionally w/o good reason.
+  #
+  # At the time blocking reserve/pop was added to our fork it seemed like too
+  # much work w/o a significant ROI to take this any further.
+  test "will only block for a positive timeout value" do
+    assert_false @worker.can_block?(0)
+    assert @worker.can_block?(1)
+  end
+
 end
