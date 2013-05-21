@@ -230,7 +230,7 @@ module Resque
     # Attempts to grab a job off one of the provided queues. Returns
     # nil if no job can be found.
     def blocking_reserve(timeout)
-      procline "Blocking reserve for #{queues.length} queue(s)"
+      procline "Blocking reserve for #{queues.size} queue(s)"
       log! "Checking #{queues.join(', ')} (blocking, timeout = #{timeout})"
       if job = Resque::Job.blocking_reserve(queues, timeout)
         log! "Found job on #{job.queue}"
