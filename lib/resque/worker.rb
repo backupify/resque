@@ -103,14 +103,18 @@ module Resque
     # 3. Teardown:  This worker is unregistered.
     #
     # Can be passed an integer representing the polling frequency.
-    # The default is 5 seconds, but for a semi-active site you may
-    # want to use a smaller value.
+    # For a semi-active site you may want to use a smaller value.
     #
     # Also accepts a block which will be passed the job as soon as it
     # has completed processing. Useful for testing.
-    def work(interval = 5, &block)
+    def work(interval = nil, &block)
       $0 = "resque: Starting"
       startup
+
+      # If an interval is not specified generate a random sleep time. Staggering
+      # the polling frequency should lessen the number of requests/sec that need
+      # to be serviced by redis.
+      interval = interval.nil? ? rand(5..300) : interval.to_i
 
       loop do
         break if shutdown?
@@ -133,10 +137,11 @@ module Resque
           done_working
           @child = nil
         else
-          break if interval.to_i == 0
-          log! "Sleeping for #{interval.to_i}"
-          procline @paused ? "Paused" : "Waiting for #{@queues.join(',')}"
-          sleep interval.to_i
+          break if interval == 0
+          log! "Sleeping for #{interval}"
+          waiting_for = @queues.empty? ? "work" : @queues.join(', ')
+          procline @paused ? "Paused" : "Waiting for #{waiting_for}"
+          sleep interval
         end
       end
 
