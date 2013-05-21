@@ -112,6 +112,14 @@ module Resque
       $0 = "resque: Starting"
       startup
 
+      # Ensure that interval/timeout is an integer value (DRYs some logic below)
+      timeout = interval = interval.to_i
+
+      # Calculate once, used below to determine whether or not to sleep at the
+      # end of the loop. If we are attempting to use blocking reserve/pop there
+      # is no need to sleep in the loop
+      blocking = should_block?
+
       loop do
         break if shutdown?
 
@@ -123,7 +131,7 @@ module Resque
           if @child = fork
             rand # Reseeding
             procline "Forked #{@child} at #{Time.now.to_i}"
-            Process.wait
+            Process.wait(@child)
           else
             procline "Processing #{job.queue} since #{Time.now.to_i}"
             perform(job, &block)
@@ -133,10 +141,14 @@ module Resque
           done_working
           @child = nil
         else
-          break if interval.to_i == 0
-          log! "Sleeping for #{interval.to_i}"
-          procline @paused ? "Paused" : "Waiting for #{@queues.join(',')}"
-          sleep interval.to_i
+          break if interval == 0
+          # No need to output the sleeping message if we are "blocking"
+          unless blocking
+            log! "Sleeping for #{interval}"
+            waiting_for = queues.size > 0 ? queues.join(', ') : 'work'
+            procline @paused ? "Paused" : "Waiting for #{waiting_for}"
+            sleep interval
+          end
         end
       end
 
@@ -175,9 +187,48 @@ module Resque
       end
     end
 
+    # Determines whether or not we should attempt to perform a blocking operation.
+    def should_block?
+      # Condition 1: don't block indefinitely (0 timeout)
+      # Condition 2: ensure at least 1 queue is configured for this worker
+      # Condition 3: disable this for clients that support the "nodes" method
+      # (e.g. - clients that support clustering)
+      timeout > 0 && queues.size >= 1 && !redis.respond_to?(:nodes)
+    end
+
+    # Default value used if "@timeout" is not present (expressed in seconds). If
+    # this value is greater than 0 then, in most cases, blocking reserve/pop
+    # will also be enabled.
+    DEFAULT_TIMEOUT = 5
+
+    # This value returned from this function is used as the timeout time when
+    # attempting to perform a blocking reserve/pop.
+    def timeout
+      @timeout ||= DEFAULT_TIMEOUT
+    end
+
+    # Allow the "timeout" value to be set externally
+    attr_writer :timeout
+
+    # Attempts to grab a job of of one or more queues. Under the right
+    # circumstances invocation will result in a blocking operation (as opposed
+    # to polling).
+    #
+    # It is important to not change the signature of this method to ensure
+    # compatability w/ other plugins. That being said, try to use blocking
+    # reserve/pop whenever able.
+    def reserve
+      if should_block?
+        blocking_reserve
+      else
+        polling_reserve
+      end
+    end
+
     # Attempts to grab a job off one of the provided queues. Returns
     # nil if no job can be found.
-    def reserve
+    def polling_reserve
+      procline "Polling reserve for #{queues.size} queue(s)"
       queues.each do |queue|
         log! "Checking #{queue}"
         if job = Resque::Job.reserve(queue)
@@ -189,6 +240,23 @@ module Resque
       nil
     rescue Exception => e
       log "Error reserving job: #{e.inspect}"
+      log e.backtrace.join("\n")
+      raise e
+    end
+
+    # Attempts to grab a job off one of the provided queues. Returns
+    # nil if no job can be found.
+    def blocking_reserve
+      procline "Blocking reserve for #{queues.size} queue(s)"
+      log! "Checking #{queues.join(', ')} (blocking, timeout = #{timeout})"
+      if job = Resque::Job.blocking_reserve(queues, timeout)
+        log! "Found job on #{job.queue}"
+        return job
+      end
+
+      nil
+    rescue Exception => e
+      log "Error during blocking reserve of job: #{e.inspect}"
       log e.backtrace.join("\n")
       raise e
     end

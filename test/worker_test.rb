@@ -40,11 +40,12 @@ context "Resque::Worker" do
   end
 
   test "can peek at failed jobs" do
-    10.times { Resque::Job.create(:jobs, BadJob) }
+    3.times do
+      Resque::Job.create(:jobs, BadJob)
+    end
     @worker.work(0)
-    assert_equal 10, Resque::Failure.count
-
-    assert_equal 10, Resque::Failure.all(0, 20).size
+    assert_equal 3, Resque::Failure.count
+    assert_equal 3, Resque::Failure.all(0, 6).size
   end
 
   test "can clear failed jobs" do
@@ -316,4 +317,59 @@ context "Resque::Worker" do
   test "returns PID of running process" do
     assert_equal Process.pid, @worker.pid
   end
+
+  test "can blocking grab a job from its queues" do
+    @worker.timeout = 1
+    job = @worker.blocking_reserve
+    assert_not_nil job
+    assert_equal 0, Resque.size(:jobs)
+  end
+
+  test "can blocking grab nothing from an empty queue" do
+    worker = Resque::Worker.new(:empty)
+    worker.timeout = 1
+    job = worker.blocking_reserve
+    assert_nil job
+  end
+
+  test "can do blocking work" do
+    @worker.timeout = 1
+    shutdown_thread = Thread.new do
+      sleep 6
+      @worker.shutdown
+    end
+    @worker.work(1)
+
+    shutdown_thread.join
+  end
+
+  test "can blocking reserve from multiple queues" do
+    Resque::Job.create(:high, GoodJob)
+    Resque::Job.create(:critical, GoodJob)
+
+    worker = Resque::Worker.new(:critical, :high)
+    worker.timeout = 1
+
+    worker.blocking_reserve
+    assert_equal 1, Resque.size(:high)
+    assert_equal 0, Resque.size(:critical)
+
+    worker.blocking_reserve
+    assert_equal 0, Resque.size(:high)
+  end
+
+  # Blocking indefinitely is not currently supported in our version of Resque.
+  # This test was added as a sanity check to ensure that this is not changed
+  # accidentally or intentionally w/o good reason.
+  #
+  # At the time blocking reserve/pop was added to our fork it seemed like too
+  # much work w/o a significant ROI to take this any further.
+  test "should only block for a positive timeout value" do
+    @worker.timeout = 0
+    assert_false @worker.should_block?
+
+    @worker.timeout = 1
+    assert @worker.should_block?
+  end
+
 end
