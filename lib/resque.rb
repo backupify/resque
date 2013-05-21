@@ -141,7 +141,7 @@ module Resque
   # of strings.
   #
   # Returns a Ruby object
-  def blpop(queues, timeout = 1)
+  def blpop(queues, timeout)
     queue_keys = queues.map {|queue| "queue:#{queue}"}
     redis.blpop(*(queue_keys << timeout))
   end
