@@ -112,18 +112,18 @@ module Resque
       $0 = "resque: Starting"
       startup
 
-      # Ensure that interval is an integer value (also DRYs some logic below)
-      interval = interval.to_i
+      # Ensure that interval/timeout is an integer value (DRYs some logic below)
+      timeout = interval = interval.to_i
 
       # Calculate once, used below to determine whether or not to sleep at the
       # end of the loop. If we are attempting to use blocking reserve/pop there
       # is no need to sleep in the loop
-      blocking = can_block?(interval)
+      blocking = should_block?
 
       loop do
         break if shutdown?
 
-        if not @paused and job = reserve(interval)
+        if not @paused and job = reserve
           log "got: #{job.inspect}"
           run_hook :before_fork, job
           working_on job
@@ -186,24 +186,39 @@ module Resque
       end
     end
 
-    # Determine whether or not we should attempt to perform a blocking operation.
-    # Indefinite blocking (0 value) is not currently supported.
-    def can_block?(timeout)
-      # Blocking w/ a timeout of 0 is bad, it means block indefinitely (ensure
-      # that it is greater than 0). Also, make sure that there is at least one
-      # queue configured for this worker. Lastly, disable this for clients that
-      # support the "nodes" method (e.g. - clients that support clustering)
+    # Determines whether or not we should attempt to perform a blocking operation.
+    def should_block?
+      # Condition 1: don't block indefinitely (0 timeout)
+      # Condition 2: ensure at least 1 queue is configured for this worker
+      # Condition 3: disable this for clients that support the "nodes" method
+      # (e.g. - clients that support clustering)
       timeout > 0 && queues.size >= 1 && !redis.respond_to?(:nodes)
     end
 
-    # Attempts to grab a job of of one or more queues. Defaults to a timeout of
-    # 5 seconds which will, under the right circumstances result in a blocking
-    # operation (as opposed to polling). The default value for timeout is
-    # required for compatability w/ other plugins. Whenever able, we want to use
-    # blocking reserve/pop.
-    def reserve(timeout = 5)
-      if can_block?(timeout)
-        blocking_reserve(timeout)
+    # Default value used if "@timeout" is not present (expressed in seconds). If
+    # this value is greater than 0 then, in most cases, blocking reserve/pop
+    # will also be enabled.
+    DEFAULT_TIMEOUT = 5
+
+    # This value returned from this function is used as the timeout time when
+    # attempting to perform a blocking reserve/pop.
+    def timeout
+      @timeout ||= DEFAULT_TIMEOUT
+    end
+
+    # Allow the "timeout" value to be set externally
+    attr_writer :timeout
+
+    # Attempts to grab a job of of one or more queues. Under the right
+    # circumstances invocation will result in a blocking operation (as opposed
+    # to polling).
+    #
+    # It is important to not change the signature of this method to ensure
+    # compatability w/ other plugins. That being said, try to use blocking
+    # reserve/pop whenever able.
+    def reserve
+      if should_block?
+        blocking_reserve
       else
         polling_reserve
       end
@@ -229,7 +244,7 @@ module Resque
 
     # Attempts to grab a job off one of the provided queues. Returns
     # nil if no job can be found.
-    def blocking_reserve(timeout)
+    def blocking_reserve
       procline "Blocking reserve for #{queues.size} queue(s)"
       log! "Checking #{queues.join(', ')} (blocking, timeout = #{timeout})"
       if job = Resque::Job.blocking_reserve(queues, timeout)
