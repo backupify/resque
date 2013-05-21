@@ -123,7 +123,6 @@ module Resque
       loop do
         break if shutdown?
 
-        procline "Blocking reserve for #{queues.size} queue(s)" if blocking
         if not @paused and job = reserve
           log "got: #{job.inspect}"
           run_hook :before_fork, job
@@ -146,7 +145,8 @@ module Resque
           # No need to output the sleeping message if we are "blocking"
           unless blocking
             log! "Sleeping for #{interval}"
-            procline @paused ? "Paused" : "Waiting for #{queues.join(', ')}"
+            waiting_for = queues.size > 0 ? queues.join(', ') : 'work'
+            procline @paused ? "Paused" : "Waiting for #{waiting_for}"
             sleep interval
           end
         end
@@ -228,6 +228,7 @@ module Resque
     # Attempts to grab a job off one of the provided queues. Returns
     # nil if no job can be found.
     def polling_reserve
+      procline "Polling reserve for #{queues.size} queue(s)"
       queues.each do |queue|
         log! "Checking #{queue}"
         if job = Resque::Job.reserve(queue)
@@ -246,6 +247,7 @@ module Resque
     # Attempts to grab a job off one of the provided queues. Returns
     # nil if no job can be found.
     def blocking_reserve
+      procline "Blocking reserve for #{queues.size} queue(s)"
       log! "Checking #{queues.join(', ')} (blocking, timeout = #{timeout})"
       if job = Resque::Job.blocking_reserve(queues, timeout)
         log! "Found job on #{job.queue}"
