@@ -107,14 +107,18 @@ module Resque
     #
     # Also accepts a block which will be passed the job as soon as it
     # has completed processing. Useful for testing.
-    def work(interval = nil, &block)
+    def work(interval = 5, &block)
       $0 = "resque: Starting"
       startup
 
-      # If an interval is not specified generate a random sleep time. Staggering
-      # the polling frequency should lessen the number of requests/sec that need
-      # to be serviced by redis.
-      interval = interval.nil? ? rand(5..300) : interval.to_i
+      # Ensure that interval is an integer value that is 0 or higher
+      interval = [0, interval.to_i].max
+
+      # Increasing and randomizing the polling frequency should help to lessen
+      # the average number of requests/sec that need to be serviced by redis.
+      # This value will only be used when there are no jobs in the queue that
+      # this worker can work on
+      interval = rand(interval..300)
 
       loop do
         break if shutdown?
