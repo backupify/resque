@@ -10,6 +10,10 @@ context "Resque::Worker" do
 
     @worker = Resque::Worker.new(:jobs)
     Resque::Job.create(:jobs, SomeJob, 20, '/tmp')
+
+    # ensure that tests run fast by setting the min/max interval values to 0
+    ENV["MIN_INTERVAL"] = "0"
+    ENV["MAX_INTERVAL"] = "0"
   end
 
   test "can fail jobs" do
