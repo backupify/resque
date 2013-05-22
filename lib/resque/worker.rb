@@ -111,6 +111,10 @@ module Resque
       $0 = "resque: Starting"
       startup
 
+      # We rely heavily on interval below. Ensure that it is a non-negative
+      # integer value
+      interval = [0, interval.to_i].max
+
       # Ensure that the min_interval is an integer value
       min_interval = ENV["MIN_INTERVAL"] ? ENV["MIN_INTERVAL"].to_i : interval
 
