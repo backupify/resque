@@ -111,14 +111,19 @@ module Resque
       $0 = "resque: Starting"
       startup
 
-      # Ensure that interval is an integer value that is 0 or higher
-      interval = [0, interval.to_i].max
+      # Ensure that the min_interval is an integer value
+      min_interval = ENV["MIN_INTERVAL"] ? ENV["MIN_INTERVAL"].to_i : interval
 
-      # Increasing and randomizing the polling frequency should help to lessen
-      # the average number of requests/sec that need to be serviced by redis.
-      # This value will only be used when there are no jobs in the queue that
-      # this worker can work on
-      interval = rand(interval..300)
+      # Ensure that the max_interval is an integer value
+      max_interval = ENV["MAX_INTERVAL"] ? ENV["MAX_INTERVAL"].to_i : interval
+
+      # Increasing and randomizing the polling frequency can help to lessen the
+      # average number of requests/sec that need to be serviced by redis. This
+      # value will only be used when there are no jobs in the queue
+      #
+      # If "min_interval" is erroneously less than "max_interval" the "interval"
+      # value will be used
+      interval = rand(min_interval..max_interval) || interval
 
       loop do
         break if shutdown?
